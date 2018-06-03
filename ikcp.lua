@@ -870,124 +870,95 @@ local kcp = {
     WaitSnd = function(self)
 		return #self.snd_buf + #self.snd_queue;
     end,
-}
 
-	-- Determine when should you invoke ikcp_update:
+    -- Determine when should you invoke ikcp_update:
 	-- returns when you should invoke ikcp_update in millisec, if there
 	-- is no ikcp_input/_send calling. you can call ikcp_update in that
 	-- time, instead of call update repeatly.
 	-- Important to reduce unnacessary ikcp_update invoking. use it to
 	-- schedule ikcp_update (eg. implementing an epoll-like mechanism,
 	-- or optimize ikcp_update when handling massive kcp connections)
-	-- public UInt32 Check(UInt32 current_)
-	-- {
-	-- 	if (0 == updated)
-	-- 	{
-	-- 		return current_
-	-- 	}
-    --
-	-- 	uint ts_flush_ = ts_flush
-	-- 	int tm_flush_ = 0x7fffffff
-	-- 	int tm_packet = 0x7fffffff
-	-- 	int minimal = 0
-    --
-	-- 	if (_itimediff(current_, ts_flush_) >= 10000 || _itimediff(current_, ts_flush_) < -10000)
-	-- 	{
-	-- 		ts_flush_ = current_
-	-- 	}
-    --
-	-- 	if (_itimediff(current_, ts_flush_) >= 0)
-	-- 	{
-	-- 		return current_
-	-- 	}
-    --
-	-- 	tm_flush_ = _itimediff(ts_flush_, current_)
-    --
-	-- 	foreach (Segment seg in snd_buf)
-	-- 	{
-	-- 		int diff = _itimediff(seg.resendts, current_)
-	-- 		if (diff <= 0)
-	-- 		{
-	-- 			return current_
-	-- 		}
-    --
-	-- 		if (diff < tm_packet)
-	-- 		{
-	-- 			tm_packet = diff
-	-- 		}
-	-- 	}
-    --
-	-- 	minimal = tm_packet
-	-- 	if (tm_packet >= tm_flush_)
-	-- 	{
-	-- 		minimal = tm_flush_
-	-- 	}
-    --
-	-- 	if (minimal >= interval)
-	-- 	{
-	-- 		minimal = (int)this.interval
-	-- 	}
-    --
-	-- 	return current_ + (UInt32)minimal
-	-- }
+	Check = function(self, current_)
+		if 0 == self.updated then
+			return current_
+        end
 
-	-- change MTU size, default is 1400
-	-- public int SetMtu(Int32 mtu_)
-	-- {
-	-- 	if (mtu_ < 50 || mtu_ < IKCP_OVERHEAD)
-	-- 	{
-	-- 		return -1
-	-- 	}
-    --
-	-- 	var buffer_ = new byte[(mtu_ + IKCP_OVERHEAD) * 3]
-	-- 	if (null == buffer_)
-	-- 	{
-	-- 		return -2
-	-- 	}
-    --
-	-- 	mtu = (UInt32)mtu_
-	-- 	mss = mtu - IKCP_OVERHEAD
-	-- 	buffer = buffer_
-	-- 	return 0
-	-- }
+		local ts_flush_ = self.ts_flush
+		local tm_flush_ = 0x7fffffff
+		local tm_packet = 0x7fffffff
+		local minimal = 0
 
-	-- public int Interval(Int32 interval_)
-	-- {
-	-- 	if (interval_ > 5000)
-	-- 	{
-	-- 		interval_ = 5000
-	-- 	}
-	-- 	else if (interval_ < 10)
-	-- 	{
-	-- 		interval_ = 10
-	-- 	}
-    --
-	-- 	interval = (UInt32)interval_
-	-- 	return 0
-	-- }
+		if current_ - ts_flush_ >= 10000 or current_ - ts_flush_ < -10000 then
+			ts_flush_ = current_
+        end
 
-	-- get how many packet is waiting to be sent
-	-- public int WaitSnd()
-	-- {
-	-- 	return snd_buf.Length + snd_queue.Length
-	-- }
+		if current_ - ts_flush_ >= 0 then
+			return current_
+        end
 
-    return function(conv_, output_)
-        local t = clone(kcp)
-        t.conv = conv_
-		t.snd_wnd = IKCP_WND_SND
-		t.rcv_wnd = IKCP_WND_RCV
-		t.rmt_wnd = IKCP_WND_RCV
-		t.mtu = IKCP_MTU_DEF
-		t.mss = t.mtu - IKCP_OVERHEAD
+		tm_flush_ = ts_flush_ - current_
 
-		t.rx_rto = IKCP_RTO_DEF
-		t.rx_minrto = IKCP_RTO_MIN
-		t.interval = IKCP_INTERVAL
-		t.ts_flush = IKCP_INTERVAL
-		t.ssthresh = IKCP_THRESH_INIT
-		t.dead_link = IKCP_DEADLINK
-		t.buffer = {}
-		t.output = output_
-        return t
-    end
+        for k,seg in pairs(self.snd_buf) do
+            local diff = seg.resendts - current_
+			if diff <= 0 then
+				return current_
+            end
+
+			if diff < tm_packet then
+				tm_packet = diff
+            end
+        end
+
+		minimal = tm_packet
+		if tm_packet >= tm_flush_ then
+			minimal = tm_flush_
+        end
+
+		if minimal >= interval then
+			minimal = self.interval
+        end
+
+		return current_ + minimal
+	end,
+
+    -- change MTU size, default is 1400
+	SetMtu = function(self, mtu_)
+		if mtu_ < 50 or mtu_ < IKCP_OVERHEAD then
+			return -1
+        end
+
+		self.mtu = mtu_
+		self.mss = self.mtu - IKCP_OVERHEAD
+		return 0
+	end,
+
+    SetInterval = function(self, interval_)
+		if interval_ > 5000 then
+			interval_ = 5000
+		elseif (interval_ < 10)
+			interval_ = 10
+        end
+
+		self.interval = interval_
+	end,
+}
+
+return function(conv_, output_)
+    local t = clone(kcp)
+    t.conv = conv_
+	t.snd_wnd = IKCP_WND_SND
+	t.rcv_wnd = IKCP_WND_RCV
+	t.rmt_wnd = IKCP_WND_RCV
+	t.mtu = IKCP_MTU_DEF
+	t.mss = t.mtu - IKCP_OVERHEAD
+
+	t.rx_rto = IKCP_RTO_DEF
+	t.rx_minrto = IKCP_RTO_MIN
+	t.interval = IKCP_INTERVAL
+	t.ts_flush = IKCP_INTERVAL
+	t.ssthresh = IKCP_THRESH_INIT
+	t.dead_link = IKCP_DEADLINK
+	t.buffer = {}
+	t.output = output_
+    return t
+end
