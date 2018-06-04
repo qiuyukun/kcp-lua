@@ -623,7 +623,6 @@ local kcp = {
 
         for i = 1, count do
             if offset + IKCP_OVERHEAD > self.mtu then
-                print("out put flush", offset)
 				self.output(self.buffer, offset)
 				offset = 0
             end
@@ -935,7 +934,7 @@ local kcp = {
     SetInterval = function(self, interval_)
 		if interval_ > 5000 then
 			interval_ = 5000
-		elseif (interval_ < 10)
+		elseif interval_ < 10 then
 			interval_ = 10
         end
 
