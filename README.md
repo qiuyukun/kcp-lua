@@ -59,7 +59,7 @@ Send
 <pre><code>
     --发送消息,传入一个包含字节信息的table
     local bytes = { str:byte(1, -1) }
-    v.kcp:Send(bytes, 0, #bytes)
+    kcp1:Send(bytes, 0, #bytes)
 </code></pre>
 
 Recv
@@ -67,7 +67,7 @@ Recv
     --接受消息,传入一个空table
     --返回长度,如果大于0则表示有消息,buf里会填充字节信息
     local buf = {}
-    local len = v.kcp:Recv(buf)
+    local len = kcp1:Recv(buf)
 </code></pre>
 
 -----------------
